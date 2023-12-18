@@ -1,0 +1,121 @@
+---
+title: "Seleccion dos fases y definicion diseño 2 fases y estimaciones muestrales"
+author: "José Fernando Zea"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(survey)
+```
+
+
+Leemos la muestra de la primera fase:
+
+```{r, warning=FALSE, message=FALSE}
+muestra <- readRDS("output/muestraFase1.Rds")
+```
+
+También leemos el marco para comparar el ingreso microestablecimientos:
+
+```{r, warning=FALSE, message=FALSE}
+setwd("output")
+BigCity2 <- readRDS("BigCity2.Rds") 
+```
+
+# Selección de la segunda fase
+
+
+Contamos el número de emprendimientos:
+
+```{r}
+table(muestra$indica_microestablecimiento, useNA = "a")
+```
+
+
+
+De los 487 emprendimientos seleccionaremos 300 establecimientos para profundizar temáticas de emprendimientos:
+
+
+```{r}
+n_segundaFase <- 300 # Tamaño de muestra de segunda fase
+
+df_sel_emprendimiento <- muestra %>% 
+  filter(indica_microestablecimiento == 1) %>% select(HHID)
+
+# Seleccion con un MAS los establecimientos con un coordinado negativo
+
+# nrow(df_sel_emprendimiento) # Tamaño de muestra de la primera fase
+ 
+set.seed(12345)
+df_sel_emprendimiento$aleaEstablec <- runif(n = nrow(df_sel_emprendimiento))
+df_sel_emprendimiento <- df_sel_emprendimiento %>% arrange(aleaEstablec)
+
+df_sel_emprendimiento$indica_2Fases <- c(rep(1, n_segundaFase), 
+                      rep(0, nrow(df_sel_emprendimiento) - n_segundaFase))
+
+df_sel_emprendimiento$aleaEstablec <- NULL
+
+```
+
+En la muestra coloca la variable indicadora de dos fases en la muestra original:
+
+
+```{r}
+
+# En la muestra coloca la variable indicadora de dos fases en la muestra original
+muestra <- muestra %>% left_join(df_sel_emprendimiento, by = "HHID")
+
+# El número de hogares que tienen un microemprendimiento en la muestra de la primera fase
+muestra$N_2fases <- sum(muestra$indica_microestablecimiento)
+
+```
+
+
+
+```{r}
+head(muestra)
+```
+
+
+La muestra resultante tiene una variable llamada indica_2Fases:
+
+```{r}
+table(muestra$indica_2Fases, useNA = "a")
+```
+De los hogares con microestablecimientos comerciales que resultaron en la muestra 300 fueron seleccionados para realizarle un formulario de microestablecimientos.
+
+
+# Diseño en dos Fases
+
+```{r}
+diseno2Fases <- twophase(id = list(~PSU + HHID, ~HHID), 
+         strata = list(~PSU, NULL),
+         fpc = list(~N_upm + N_i, ~N_2fases),
+subset = muestra$indica_2Fases == 1 & !is.na(muestra$indica_2Fases), 
+ data = muestra)
+```
+
+Estimamos el ingreso promedio de los microestablecimientos:
+```{r}
+svymean(~ingreso_microestablecimiento, diseno2Fases)
+```
+
+Con un cve de:
+```{r}
+11.616 / 378.69  * 100
+```
+
+
+
+Comparamos con la estimación de BigLucy:
+
+```{r}
+mean(BigCity2$ingreso_microestablecimiento, na.rm = T)
+```
+

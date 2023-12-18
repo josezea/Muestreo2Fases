@@ -1,0 +1,195 @@
+---
+title: "Generación de muestra de la primera fase"
+author: "José Fernando Zea"
+date: "2023-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Proceso de generación de muestra
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+#library(TeachingSampling)
+library(sampling)
+#library(ggplot2)
+```
+
+
+```{r}
+data(BigCity)
+```
+
+
+Generamos una variable dummy para definir si la variable es microestablecimiento (asumiremos que cerca del 25% de los hogares tiene un microestablecimiento)
+
+```{r}
+set.seed(12345)
+BigCity$indica_microestablecimiento <- rbinom(n = nrow(BigCity),
+                                             size = 1, prob = 0.25)
+```
+La proporción de microestablecimientos es:
+
+```{r}
+table(BigCity$indica_microestablecimiento, useNA = "a") %>% proportions()
+```
+
+Ahora simulo una variable que es el ingreso del microestablecimiento:
+
+```{r}
+BigCity$ingreso_microestablecimiento <- NA
+BigCity$ingreso_microestablecimiento[BigCity$indica_microestablecimiento == 1] <-
+  runif(n = sum(BigCity$indica_microestablecimiento == 1), 100, 700)
+
+```
+
+```{r}
+saveRDS(BigCity, "output/BigCity2.Rds")
+```
+
+
+# Selección de unidades primarias de muestreo
+
+Sacamos una muestra de 329 (20%) UPMS de las 1644, repartimos por estrato el número de UPMS:
+
+```{r}
+df_ConteoUpmXestrato <- BigCity %>% group_by(Stratum, PSU) %>% count() %>% select(-n) %>%
+          ungroup() %>% group_by(Stratum) %>% count(name = "N_upm") %>% ungroup()
+df_ConteoUpmXestrato$n_upm <- ceiling(329 * df_ConteoUpmXestrato$N_upm / sum(df_ConteoUpmXestrato$N_upm))
+df_ConteoUpmXestrato$n_upm <- ifelse(df_ConteoUpmXestrato$n_upm == 1, 2, df_ConteoUpmXestrato$n_upm)
+```
+
+El tamño de muestra de UPMS resultante es 391.
+
+
+Generamos el marco de UPMS:
+
+```{r}
+df_marco <- BigCity %>% group_by(Stratum, PSU) %>% count() %>% select(-n)
+df_marco <- df_marco %>% left_join(df_ConteoUpmXestrato, by = "Stratum")
+```
+
+Organizar el estrato:
+
+```{r}
+df_marco <- df_marco %>% arrange(Stratum)
+df_ConteoUpmXestrato <- df_ConteoUpmXestrato %>% arrange(Stratum)
+n_I <- df_ConteoUpmXestrato$n_upm
+```
+
+
+Seleccionamos la muestra del marco:
+
+```{r}
+names(df_marco)[names(df_marco) == "Stratum"] <- "Estrato"
+set.seed(12345)
+proc_estratificacion <- sampling::strata(df_marco, stratanames = "Estrato", size = n_I, method = "srswor",
+                 description = F)
+```
+
+```{r}
+muestra_marco <- getdata(df_marco, proc_estratificacion)
+muestra_marco$ID_unit <- NULL
+muestra_marco$Stratum <- NULL
+muestra_marco <- muestra_marco %>% relocate(Estrato)
+names(muestra_marco)[names(muestra_marco) == "Prob"] <- "Pi_Ii"
+names(muestra_marco)[names(muestra_marco) == "Estrato"] <- "Stratum"
+
+```
+
+
+# Selección de unidades secundarias de muestreo
+
+```{r}
+df_marcoHogares_BigCity <- right_join(BigCity, muestra_marco, by = c("Stratum", "PSU"))
+df_marcoHogares_BigCity <- df_marcoHogares_BigCity %>% group_by(Stratum, PSU, HHID) %>%
+  summarise(N_upm  = max(N_upm), n_upm = max(n_upm), Pi_Ii = max(Pi_Ii))
+```
+
+
+Consultamos el número de hogares en la UPM:
+
+```{r}
+consulta_NumHog <- df_marcoHogares_BigCity %>% group_by(Stratum, PSU) %>% count(name = "N_i") %>% 
+                   arrange(PSU)
+consulta_NumHog$n_i <- ifelse(consulta_NumHog$N_i < 5, consulta_NumHog$N_i, 5)
+n_hog <- consulta_NumHog$n_i
+```
+
+
+Selecciono 5 hogares por UPM (salvo que haya menos de 5 horares en la UPM):
+
+
+```{r}
+df_marcoHogares_BigCity <- df_marcoHogares_BigCity %>% arrange(PSU)
+```
+
+```{r}
+set.seed(12345)
+proc_estratificacion2 <- sampling::strata(df_marcoHogares_BigCity, 
+                                         stratanames = "PSU", size = n_hog, 
+                                         method = "srswor",
+                                         description = F)
+```
+
+
+```{r}
+names(df_marcoHogares_BigCity)[names(df_marcoHogares_BigCity) == "Stratum"] <- "Estrato_UPM"
+
+muestra_hogares <- getdata(df_marcoHogares_BigCity, proc_estratificacion2)
+muestra_hogares$ID_unit  <- NULL
+muestra_hogares$Stratum  <- NULL
+
+names(muestra_hogares)[names(muestra_hogares) == "Prob"] <- "Pi_ki"
+```
+
+
+
+```{r}
+muestra_hogares <- muestra_hogares %>% left_join(consulta_NumHog, by = "PSU")
+muestra_hogares$ID_unit <- NULL
+muestra_hogares$Stratum <- NULL
+```
+
+
+```{r}
+muestra_hogares$pi_k <- muestra_hogares$Pi_Ii *  muestra_hogares$Pi_ki
+```
+
+
+```{r}
+sum(1/muestra_hogares$pi_k)
+```
+
+
+# Muestra final
+Integramos a la tabla de BigCity para traer las variables:
+
+
+```{r}
+muestra <- BigCity %>% right_join(muestra_hogares, by = c("HHID", "PSU"))
+```
+
+
+Conservamos solo las variables a nivel de hogar:
+
+
+```{r}
+muestraHog <- muestra %>% filter(PersonID == "idPer01") %>%
+  select(-Sex, -Age, -MaritalST, -Employment, -PersonID)
+```
+
+
+```{r}
+setwd("output")
+saveRDS(muestraHog, "muestraFase1.Rds")
+```
+
+```{r}
+
+```
+
