@@ -96,9 +96,37 @@ De los hogares con microestablecimientos comerciales que resultaron en la muestr
 ```{r}
 diseno2Fases <- twophase(id = list(~PSU + HHID, ~HHID), 
          strata = list(~Stratum, NULL), # Cambiar PSU por Stratum
-         fpc = list(~N_upm + N_i, ~N_2fases), 
+         fpc = list(~N_upm + N_i, ~N_2fases),
 subset = muestra$indica_2Fases == 1 & !is.na(muestra$indica_2Fases), 
  data = muestra)
+```
+
+
+#last cluster sampling: 
+
+
+```{r}
+#diseno2Fases <- twophase(id = list(~PSU + HHID, ~HHID), 
+#         strata = list(~Stratum, NULL), # Cambiar PSU por Stratum
+#         weigths = list(~fexp_final, ~fexp_2fase),  # fexp_2fase: 487 / 300
+#subset = muestra$indica_2Fases == 1 & !is.na(muestra$indica_2Fases), 
+# data = muestra)
+```
+
+
+pps:
+
+```{r}
+# diseno2Fases <- twophase(id = list(~PSU + HHID, ~HHID), 
+#          strata = list(~Stratum, NULL), # Cambiar PSU por Stratum
+#          fpc = list(~N_upm + N_i, ~N_2fases),
+#          probs = list(~Pi_Ii+ Pi_ki, ~Pik_segundaFase),
+# subset = muestra$indica_2Fases == 1 & !is.na(muestra$indica_2Fases), 
+#  data = muestra)
+
+```
+
+
 
 Estimamos el ingreso promedio de los microestablecimientos:
 ```{r}
