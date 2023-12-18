@@ -1,0 +1,170 @@
+---
+title: "Muestreo en dos fases"
+author: "José Fernando Zea"
+date: "2023-09-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Muestreo en dos fases
+
+```{r}
+library(survey)
+library(sampling)
+```
+
+In a two-phase design a sample is taken from a population and a subsample taken from the sample, typically stratified by variables not known for the whole population. The second phase can use any design supported for single-phase sampling. The first phase must currently be one-stage element or cluster sampling. Lumley (2023).
+
+```{r}
+data(pbc, package="survival")
+```
+
+```{r}
+table(pbc$trt, useNA = "a")
+```
+
+1: D-penicillmain 2: placebo 3. No aleatorizado
+
+```{r}
+pbc$randomized <- with(pbc, !is.na(trt) & trt>0)
+```
+
+```{r}
+table(pbc$randomized)
+```
+
+```{r}
+pbc$id <- 1:nrow(pbc)
+```
+
+Un diseño de dos fases con selección
+
+```{r}
+d2pbc <- twophase(id=list(~id,~id), data=pbc, subset=~randomized)
+svymean(~bili, d2pbc)
+```
+
+# Second example
+
+En el muestreo de dos fases con estratificación, en la primera fase se toma una muestra grande y se clasifican todas las unidades de muestreo seleccionadas. Las clases formadas de esta manera se utilizan luego como estratos en la segunda fase de muestreo. Se selecciona una submuestra estratificada y la variable de estudio se observa únicamente en las unidades de la submuestra.
+
+```{r}
+#library(remotes)
+#install_github("DickBrus/sswr")
+library(sswr)
+```
+
+El área de estudio Voorst, en el este de los Países Bajos, tiene dimensiones de 6 km × 1 km. Se recolectaron muestras de suelo en 132 puntos por estudiantes de posgrado de la Universidad de Wageningen y se analizaron para determinar las concentraciones de Materia Orgánica del Suelo (SOM) en g kg-1 de suelo seco en un laboratorio. Se creó un mapa mediante simulación geoestadística condicional de los logaritmos naturales de la concentración de SOM en una cuadrícula de 25 m × 25 m. Esto se realizó utilizando un modelo mixto lineal con residuales espacialmente correlacionados y combinaciones de tipo de suelo y uso de la tierra como predictores cualitativos. siguiente figura detalla el mapa simulado de la concentración orgánica del suelo (SOM):
+
+![](https://dickbrus.github.io/SpatialSamplingwithR/SpatialSampling_files/figure-html/mapVoorst-1.png)
+
+- In the first phase, a systematic random sample is selected, consisting of the nodes of a square sampling grid with a spacing of 2 km.
+
+- Land use and land cover (LULC) are then determined at the selected grid nodes, using orthophotographs, satellite imagery, and fieldwork.
+
+The site-specific determinations of LULC classes are then used to select a stratified random subsample (second-phase sample).
+
+![](Muestreo-2Fases.png)
+
+Suponga que no se cuenta con A map with five combinations of soil type and land use is available of this study area
+
+```{r}
+# Como supuesto suponga que la última columna no se tiene
+data(grdVoorst)
+```
+
+
+the first phase, a simple random sample of size 100 is selected. In the field, the soil-land use combination is determined for the selected points, 
+
+
+```{r}
+n_1fase <- 100
+set.seed(123)
+N <- nrow(grdVoorst)
+units <- sample(N, size = n_1fase, replace = FALSE)
+mysample <- grdVoorst[units, ]
+```
+
+Dentro de los puntos seleccionados se levanta información de imágenes satelitales para conocer la materia concentrada:
+
+```{r}
+# Tamaño de muestra segunda fase
+n_2fase <- 40
+
+# Tamaño de los estratos para los elementos seleccionados de la fase 1
+n_1fase_h <- tapply(mysample$z, mysample$stratum, FUN = length)
+
+# Asignación proporcional
+n_2fase_h <- round(n_2fase * n_1fase_h / n_1fase, 0)
+n_2fase_h
+```
+
+
+
+Seleccionamos la muestra estratificada de la segunda fase:
+
+Ordenamos por estrato la tabla:
+
+
+
+```{r}
+units <- sampling::strata(mysample, stratanames = "stratum",
+  size = n_2fase_h[unique(mysample$stratum)], method = "srswor")
+mysubsample <- getdata(mysample, units)
+table(mysubsample$stratum)
+```
+
+
+Conformamos una tabla para la muestra de dos fases:
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+lut <- data.frame(stratum = sort(unique(mysample$stratum)), fpc2 = n_1fase_h)
+mysample <- mysample %>%
+  mutate(ind = FALSE,
+         fpc1 = N) %>%
+  left_join(lut, by = "stratum")
+mysample$ind[units$ID_unit] <- TRUE
+```
+
+Calculamos el total de unidades seleccionadas:
+
+```{r}
+table(mysample$ind)
+```
+
+Calculamos el diseño de dos fases:
+
+```{r}
+design_2phase <- survey::twophase(
+  id = list(~ 1, ~ 1), strata = list(NULL, ~ stratum),
+  data = mysample, subset = ~ ind, fpc = list(~ fpc1, ~ fpc2))
+svymean(~ z, design_2phase)
+```
+
+
+
+
+# Bibliography
+
+Lumley T. (n.d.). Two-phase sampling. R-Survey. <https://r-survey.r-forge.r-project.org/survey/html/twophase.html>. Accessed September 23, 2023.
+
+
+https://cran.r-project.org/web/packages/svrep/vignettes/two-phase-sampling.html
+
+
+
+
+Big city etapa est mas - mas
+hacer una fase de MAS
+
+* Tiene negocio en la casa ~ BER
+
+Hay una segunda fase, saco una muestra MAS de los 1 y pregunta cuanto vento
+
