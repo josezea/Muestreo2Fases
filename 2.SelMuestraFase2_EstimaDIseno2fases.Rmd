@@ -95,11 +95,10 @@ De los hogares con microestablecimientos comerciales que resultaron en la muestr
 
 ```{r}
 diseno2Fases <- twophase(id = list(~PSU + HHID, ~HHID), 
-         strata = list(~PSU, NULL),
-         fpc = list(~N_upm + N_i, ~N_2fases),
+         strata = list(~Stratum, NULL), # Cambiar PSU por Stratum
+         fpc = list(~N_upm + N_i, ~N_2fases), 
 subset = muestra$indica_2Fases == 1 & !is.na(muestra$indica_2Fases), 
  data = muestra)
-```
 
 Estimamos el ingreso promedio de los microestablecimientos:
 ```{r}
@@ -108,7 +107,7 @@ svymean(~ingreso_microestablecimiento, diseno2Fases)
 
 Con un cve de:
 ```{r}
-11.616 / 378.69  * 100
+10.82 / 387.92   * 100
 ```
 
 
